@@ -1,12 +1,12 @@
-from all_cosmo import read_obs_data
+import os
+import argparse
 import matplotlib.pyplot as plt
-import matplotlib.gridspec as gridspec
-import seaborn as sns
 import numpy as np
 import pandas as pd
-import os
-from scipy.stats import binned_statistic_2d
-from scipy.stats import spearmanr
+import seaborn as sns
+from all_cosmo import read_obs_data
+from matplotlib import gridspec
+from scipy.stats import binned_statistic_2d, spearmanr
 
 plt.style.use('seaborn-v0_8-deep')
 
@@ -91,13 +91,15 @@ def plot_pvalues(df_results,cosmo_names,plot_directory):
     ax1.axhline(y=np.log10(0.05), color='k', linestyle='--', label=r'$\log_{10}(0.05)$')
     ax2.axhline(y=np.log10(0.05), color='k', linestyle='--')
 
+    ax1.tick_params(axis='y', labelsize=16)
+    ax2.tick_params(axis='y', labelsize=16)
+
     fig.supylabel(r'$\log_{10}$(p-value)')
     ax2.set_xlabel('Cosmology')
 
-    ax2.set_xticks(np.arange(len(cosmo_names)))
-    ax2.set_xticklabels(cosmo_names, rotation=60, fontsize=8)
+    ax2.set_xticklabels([])
 
-    fig.legend(loc="center", bbox_to_anchor=(0.4, 0.6))
+    fig.legend(loc="center", bbox_to_anchor=(0.4, 0.6),fontsize=16)
     plt.tight_layout()
     plt.savefig(plot_directory + '/pvalues.pdf')
 
@@ -169,7 +171,7 @@ def plot_cdf_comparison(df_velocities,cosmo_max_rad,cosmo_max_tan,obs_data,plot_
 def plot_num_pairs(df_results, cosmo_names,plot_directory):
     '''Plot number of pairs for each cosmology and filter'''
     filts = ['Trad','Real','Pract']
-    labels = ['Traditional','Realistic','Practical']
+    labels = ['Traditional','Realistic','Centered']
     sizes = [df_results.xs(('vrel_rad',f),level=('variable','filter'))['Size'] for f in filts]
 
     fmts = ['-o', '-s', '-D', '-^', '-x']
@@ -266,12 +268,11 @@ def plot_means(df_results, variables, variables_labels, filters, plot_directory,
         axb = ax.twinx()
         for i, f in enumerate(means_var[1:]):
             delta = (f - base) / base * 100
-            axb.plot(
+            axb.scatter(
                 x_vals,
                 delta,
                 marker='x',
-                linestyle='--',
-                color=colors[(i + 1) % len(colors)],
+                color=colors[2],
                 alpha=0.7,
                 label=f'$\\Delta$ {filters[i + 1]} vs {filters[0]} (\\%)'
             )
@@ -281,7 +282,8 @@ def plot_means(df_results, variables, variables_labels, filters, plot_directory,
         axb.set_ylabel('Difference (\\%)')
         ax.grid(True, zorder=0)
         ax.set_xticks(x_vals)
-        ax.set_xticklabels(all_cosmos, rotation=60, fontsize=10)
+        ax.set_xticklabels([])
+        #ax.set_xticklabels(all_cosmos, rotation=60, fontsize=10)
 
         return ax
 
@@ -310,7 +312,7 @@ def plot_means(df_results, variables, variables_labels, filters, plot_directory,
     plt.close()
 
 
-def plot_scatter_matrix_cosmo(df_results, cosmo_params_df, df_importance, var, filt, title, plot_directory, filename, num_features=5):
+def plot_scatter_matrix_cosmo(df_results, cosmo_params_df, df_importance, var, filt, plot_directory, filename, num_features=5):
     '''Plot scatter matrix of top cosmological parameters'''
     top_features = df_importance['Feature'].head(num_features).tolist()
     top_features.sort()
@@ -348,7 +350,7 @@ def plot_scatter_matrix_cosmo(df_results, cosmo_params_df, df_importance, var, f
     plt.close()
 
 
-def plot_scatter_matrix_mdiff(importances_df, df_results, cosmo_params_df, var, filt,title, plot_directory, filename,num_features=5):
+def plot_scatter_matrix_mdiff(importances_df, df_results, cosmo_params_df, var, filt, plot_directory, filename,num_features=5):
     '''Plot scatter matrix of top features vs mean difference'''
     df_results = df_results.sort_index(level='cosmo', key=lambda x: x.str[1:].astype(int))
 
@@ -382,7 +384,7 @@ def plot_scatter_matrix_mdiff(importances_df, df_results, cosmo_params_df, var, 
             x=param,
             y="M diff",
             hue="significant",
-            markers=['X', 'o'],
+            style="significant",
             palette={0: 'black', 1: 'gray'},
             ax=ax,
             s=30,
@@ -395,7 +397,7 @@ def plot_scatter_matrix_mdiff(importances_df, df_results, cosmo_params_df, var, 
         text_x = 0.05 if var == "vrel_rad" else 0.6
         ax.text(text_x, 0.95, r'$\rho$' + f'={corr:.2f}', 
                 verticalalignment='top', transform=ax.transAxes,
-                bbox=dict(boxstyle='round', facecolor='white', alpha=0.5, edgecolor='black'))
+                bbox={'boxstyle': 'round', 'facecolor': 'white', 'alpha': 0.5, 'edgecolor': 'black'})
 
     fig.supylabel("Mean difference in " + r"$v_r$" + " ($\\%$)" if var == "vrel_rad" else "Mean difference in " + r"$v_t$" + " ($\\%$)")
     handles, _ = axes[0].get_legend_handles_labels()
@@ -405,9 +407,9 @@ def plot_scatter_matrix_mdiff(importances_df, df_results, cosmo_params_df, var, 
     plt.savefig(plot_directory + '/' + filename + '.pdf')
 
 
-def plot_feature_importance(df,title,plot_directory,filename):
+def plot_feature_importance(df,plot_directory,filename):
     '''Plot feature importance as a bar plot'''
-    fig, ax = plt.subplots(figsize=(8, 6))
+    _, ax = plt.subplots(figsize=(8, 6))
     #ax.set_title(title)
     sns.barplot(x='Mean Importance', y='Feature', data=df, hue='Mean Importance', palette='viridis', legend=False, ax=ax)
     plt.tight_layout()
@@ -418,7 +420,7 @@ def plot_vr_heatmap(v_b, mu, v_r,
                     bins_vb=30, bins_mu=30,
                     statistic='mean',
                     vmin=None, vmax=None,
-                    cmap='RdBu_r',
+                    cmap='plasma',
                     xlabel=r'Barycenter speed $v_b$ [km/s]',
                     ylabel=r'Alignment $\mu = \cos\theta$',
                     title=r'Mean $v_r$ as a function of $v_b$ and $\mu$',
@@ -429,12 +431,12 @@ def plot_vr_heatmap(v_b, mu, v_r,
     '''Plot heatmap of mean v_r as a function of v_b and mu'''
 
     # Compute binned statistic
-    H, vb_edges, mu_edges, binnumber = binned_statistic_2d(
+    H, vb_edges, mu_edges, _ = binned_statistic_2d(
         v_b, mu, v_r, statistic=statistic, bins=[bins_vb, bins_mu]
     )
 
     # Plot the heatmap
-    fig, ax = plt.subplots(figsize=(7, 5))
+    _, ax = plt.subplots(figsize=(7, 5))
     im = ax.imshow(H.T, origin='lower', aspect='auto',
                    extent=[vb_edges[0], vb_edges[-1],
                            mu_edges[0], mu_edges[-1]],
@@ -453,10 +455,7 @@ def plot_vr_heatmap(v_b, mu, v_r,
         return H, vb_edges, mu_edges
 
 
-def main():
-    #suffix = input('Enter suffix for results: ')
-    suffix = 'final_rev_no_redshift'
-
+def plot_all_results(suffix='final_rev'):
     # Create a directory to save the plots
     plot_directory = 'figures/' + suffix
     os.makedirs(plot_directory, exist_ok=True)
@@ -478,11 +477,11 @@ def main():
 
     df_results = pd.read_pickle('results/' + suffix + '/cosmo_results.pkl')
     df_dists = pd.read_pickle('results/' + suffix + '/dists.pkl')
-    df_cosmo_params = pd.read_csv('analysis v2/filtered_cosmologies_latex_final.csv', index_col='cosmo')
+    df_cosmo_params = pd.read_csv('analysis/filtered_cosmologies_latex.csv', index_col='cosmo')
 
     cosmo_names = np.array(df_results.index.get_level_values(0).unique())
 
-    labels = ['Traditional','Realisitic','Practical']
+    labels = ['Traditional','Realisitic','Centered']
 
     obs_data = read_obs_data('results/montecarlo_results.csv')
     for key in obs_data.keys():
@@ -514,45 +513,37 @@ def main():
     df_importance_vrel_rad_real = pd.read_csv('results/' + suffix + '/random_forest_' + filt2 + '/feature_importance_vrel_rad.csv')
     df_importance_vrel_tan_real = pd.read_csv('results/' + suffix + '/random_forest_' + filt2 + '/feature_importance_vrel_tan.csv')
 
-    plot_feature_importance(df_importance_vrel_rad_real,r'Feature importance for $v_r$ - Realistic filter',plot_directory,'vrel_rad_real')
-    plot_feature_importance(df_importance_vrel_tan_real,r'Feature importance for $v_t$ - Realistic filter',plot_directory,'vrel_tan_real')
+    plot_feature_importance(df_importance_vrel_rad_real,plot_directory,'vrel_rad_real')
+    plot_feature_importance(df_importance_vrel_tan_real,plot_directory,'vrel_tan_real')
 
-    plot_feature_importance(df_importance_vrel_rad_pract,r'Feature importance for $v_r$ - Practical filter',plot_directory,'vrel_rad_pract')
-    plot_feature_importance(df_importance_vrel_tan_pract,r'Feature importance for $v_t$ - Practical filter',plot_directory,'vrel_tan_pract')
+    plot_feature_importance(df_importance_vrel_rad_pract,plot_directory,'vrel_rad_pract')
+    plot_feature_importance(df_importance_vrel_tan_pract,plot_directory,'vrel_tan_pract')
 
 
     # Scatter matrix with mean differences
 
     plot_scatter_matrix_mdiff(df_importance_vrel_rad_pract,df_results,df_cosmo_params,
-                              'vrel_rad','Pract',r'Top features for $v_r$ - Practical filter',
-                              plot_directory,'scatter_matrix_mdiff_vrel_rad_pract')
+                              'vrel_rad','Pract',plot_directory,'scatter_matrix_mdiff_vrel_rad_pract')
     plot_scatter_matrix_mdiff(df_importance_vrel_tan_pract,df_results,df_cosmo_params,
-                              'vrel_tan','Pract',r'Top features for $v_t$ - Practical filter',
-                              plot_directory,'scatter_matrix_mdiff_vrel_tan_pract')
+                              'vrel_tan','Pract',plot_directory,'scatter_matrix_mdiff_vrel_tan_pract')
     
     plot_scatter_matrix_mdiff(df_importance_vrel_rad_real,df_results,df_cosmo_params,
-                              'vrel_rad','Real',r'Top features for $v_r$ - Realistic filter',
-                              plot_directory,'scatter_matrix_mdiff_vrel_rad_real')
+                              'vrel_rad','Real', plot_directory,'scatter_matrix_mdiff_vrel_rad_real')
     plot_scatter_matrix_mdiff(df_importance_vrel_tan_real,df_results,df_cosmo_params,
-                              'vrel_tan','Real',r'Top features for $v_t$ - Realistic filter',
-                              plot_directory,'scatter_matrix_mdiff_vrel_tan_real')
+                              'vrel_tan','Real',plot_directory,'scatter_matrix_mdiff_vrel_tan_real')
     
     
     # Scatter matrix with cosmology parameters
 
     plot_scatter_matrix_cosmo(df_results,df_cosmo_params,df_importance_vrel_rad_pract,
-                              'vrel_rad','Pract',r'Top features for $v_r$ - Practical filter',
-                              plot_directory,'scatter_matrix_cosmo_vrel_rad_pract')
+                               'vrel_rad','Pract', plot_directory,'scatter_matrix_cosmo_vrel_rad_pract')
     plot_scatter_matrix_cosmo(df_results,df_cosmo_params,df_importance_vrel_tan_pract,
-                              'vrel_tan','Pract',r'Top features for $v_t$ - Practical filter',
-                              plot_directory,'scatter_matrix_cosmo_vrel_tan_pract')
+                               'vrel_tan','Pract',plot_directory,'scatter_matrix_cosmo_vrel_tan_pract')
     
     plot_scatter_matrix_cosmo(df_results,df_cosmo_params,df_importance_vrel_rad_real,
-                                'vrel_rad','Real',r'Top features for $v_r$ - Realistic filter',
-                                plot_directory,'scatter_matrix_cosmo_vrel_rad_real')
+                                'vrel_rad','Real', plot_directory,'scatter_matrix_cosmo_vrel_rad_real')
     plot_scatter_matrix_cosmo(df_results,df_cosmo_params,df_importance_vrel_tan_real,
-                              'vrel_tan','Real',r'Top features for $v_t$ - Realistic filter',
-                              plot_directory,'scatter_matrix_cosmo_vrel_tan_real')
+                              'vrel_tan','Real',plot_directory,'scatter_matrix_cosmo_vrel_tan_real')
     
     # Heatmap
     base_cosmo_dists = df_dists.xs('c000', level='cosmo')
@@ -578,6 +569,8 @@ def main():
     )
                       
     
-    
 if __name__ == "__main__":
-    main()
+    argument_parser = argparse.ArgumentParser(description="Generate the plots with all results and save to specified directory.")
+    argument_parser.add_argument("--suffix", type=str, default="final_rev", help="Suffix for results directory.")
+    args = argument_parser.parse_args()
+    plot_all_results(suffix=args.suffix)
