@@ -456,6 +456,9 @@ def plot_vr_heatmap(v_b, mu, v_r,
 
 
 def plot_all_results(suffix='final_rev'):
+    # Directory with saved results
+    results_dir = '/Volumes/T7/Simulations/LGkin'
+
     # Create a directory to save the plots
     plot_directory = 'figures/' + suffix
     os.makedirs(plot_directory, exist_ok=True)
@@ -474,16 +477,16 @@ def plot_all_results(suffix='final_rev'):
         'font.size': 18,            # Font size
     })
 
-
-    df_results = pd.read_pickle('results/' + suffix + '/cosmo_results.pkl')
-    df_dists = pd.read_pickle('results/' + suffix + '/dists.pkl')
+    # Load results
+    df_results = pd.read_pickle(results_dir + '/results/' + suffix + '/cosmo_results.pkl')
+    df_dists = pd.read_pickle(results_dir + '/results/' + suffix + '/dists.pkl')
     df_cosmo_params = pd.read_csv('analysis/filtered_cosmologies_latex.csv', index_col='cosmo')
 
     cosmo_names = np.array(df_results.index.get_level_values(0).unique())
 
     labels = ['Traditional','Realisitic','Centered']
 
-    obs_data = read_obs_data('results/montecarlo_results.csv')
+    obs_data = read_obs_data(results_dir + '/results/montecarlo_results.csv')
     for key in obs_data.keys():
         try:
             obs_data[key] = obs_data[key].value
@@ -506,12 +509,12 @@ def plot_all_results(suffix='final_rev'):
 
     # Feature importance
     filt1 = 'Pract'
-    df_importance_vrel_rad_pract = pd.read_csv('results/' + suffix + '/random_forest_' + filt1 + '/feature_importance_vrel_rad.csv')
-    df_importance_vrel_tan_pract = pd.read_csv('results/' + suffix + '/random_forest_' + filt1 + '/feature_importance_vrel_tan.csv')
+    df_importance_vrel_rad_pract = pd.read_csv( results_dir + '/results/' + suffix + '/random_forest_' + filt1 + '/feature_importance_vrel_rad.csv')
+    df_importance_vrel_tan_pract = pd.read_csv(results_dir + '/results/' + suffix + '/random_forest_' + filt1 + '/feature_importance_vrel_tan.csv')
 
     filt2 = 'Real'
-    df_importance_vrel_rad_real = pd.read_csv('results/' + suffix + '/random_forest_' + filt2 + '/feature_importance_vrel_rad.csv')
-    df_importance_vrel_tan_real = pd.read_csv('results/' + suffix + '/random_forest_' + filt2 + '/feature_importance_vrel_tan.csv')
+    df_importance_vrel_rad_real = pd.read_csv(results_dir + '/results/' + suffix + '/random_forest_' + filt2 + '/feature_importance_vrel_rad.csv')
+    df_importance_vrel_tan_real = pd.read_csv(results_dir + '/results/' + suffix + '/random_forest_' + filt2 + '/feature_importance_vrel_tan.csv')
 
     plot_feature_importance(df_importance_vrel_rad_real,plot_directory,'vrel_rad_real')
     plot_feature_importance(df_importance_vrel_tan_real,plot_directory,'vrel_tan_real')
