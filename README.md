@@ -32,3 +32,14 @@ This work introduces the barycenter velocity vector as an additional constraint:
 5. Test for statistical significance using KS tests.
 6. Analyse global trends in the full cosmology set.
 7. Examine links with cosmological parameters.
+
+## Data location
+The simulation data (`data/`) and analysis outputs (`results/`) are not tracked in this repository. Scripts are meant to be run from the repository root. By default they look for `data/` and `results/` there. To keep them elsewhere, for example on an external drive, copy `.env.example` to `.env` and point `LGKIN_DIR` at the folder that contains them:
+
+```bash
+pip install python-dotenv
+cp .env.example .env   # then edit LGKIN_DIR in .env
+python analysis/all_cosmo_plots.py
+```
+
+The scripts and notebooks load `.env` automatically. `.env` is git-ignored, so each machine keeps its own. A `LGKIN_DIR` already set in your shell takes precedence. Without `python-dotenv` installed, `.env` is ignored and the repository root is used, unless `LGKIN_DIR` is exported.

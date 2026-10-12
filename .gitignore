@@ -3,3 +3,4 @@ paper/
 results/
 figures/
 **__pycache__
+.env

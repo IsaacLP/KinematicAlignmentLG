@@ -1,9 +1,16 @@
+import os
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
 from astropy.coordinates import SkyCoord
 from astropy import units as u
 import matplotlib.pyplot as plt
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv()  # reads LGKIN_DIR from .env at the repo root
+except ImportError:
+    pass
 
 ## --------------------------------------- FUNCTIONS ---------------------------------------------------- ##
 
@@ -125,4 +132,6 @@ results = pd.DataFrame({"v_cm": vb,
 
 print(results)
 
-results.to_csv("/home/isaac/Documentos/LG kinematic alignment/results/montecarlo_results.csv",index=False)
+results_dir = os.path.join(os.environ.get('LGKIN_DIR', '.'), 'results')
+os.makedirs(results_dir, exist_ok=True)
+results.to_csv(os.path.join(results_dir, 'montecarlo_results.csv'),index=False)

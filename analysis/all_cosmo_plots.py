@@ -11,6 +11,12 @@ from matplotlib import gridspec
 from matplotlib.ticker import MaxNLocator
 from scipy.stats import spearmanr
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv()  # reads LGKIN_DIR from .env at the repo root
+except ImportError:
+    pass
+
 plt.style.use('seaborn-v0_8-deep')
 
 # Paper layout (openjournal, twocolumn, 10pt body): figures are drawn at the size they are
@@ -475,7 +481,7 @@ def plot_feature_importance(df,plot_directory,filename):
 
 def plot_all_results(suffix='final_rev'):
     # Directory with saved results
-    results_dir = '/Volumes/T7/Simulations/LGkin'
+    results_dir = os.environ.get('LGKIN_DIR', '.')  # folder holding results/; defaults to repo root
 
     # Create a directory to save the plots
     plot_directory = 'figures/' + suffix
