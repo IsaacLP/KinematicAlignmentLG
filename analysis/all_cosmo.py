@@ -12,6 +12,17 @@ import os
 from tqdm import tqdm
 import argparse
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv()  # reads LGKIN_DIR from .env at the repo root
+except ImportError:
+    pass
+
+# Folder holding data/ and results/; defaults to the directory the script is run from (the repo root)
+BASE_DIR = os.environ.get('LGKIN_DIR', '.')
+DATA_DIR = os.path.join(BASE_DIR, 'data')
+RESULTS_DIR = os.path.join(BASE_DIR, 'results')
+
 
 G_const = G.to(u.km**2 * u.Mpc / (u.Msun * u.s**2))
 
@@ -22,8 +33,9 @@ def read_files(directory_path):
     cosmo_names = []
     cosmo_tags = []
     
+    # Skip hidden files, e.g. the ._* metadata files macOS writes on external drives
     file_names = [f for f in os.listdir(directory_path)
-                  if os.path.isfile(os.path.join(directory_path, f)) and f.endswith('.hdf5')]
+                  if os.path.isfile(os.path.join(directory_path, f)) and f.endswith('.hdf5') and not f.startswith('.')]
     
     for filename in file_names:
         match = re.search(r'pairs_(.+?)_z', filename)
@@ -43,7 +55,8 @@ def create_cosmo(cosmo_names):
     cosmo_objects = []
     for name in cosmo_names:
         sim_meta_data = abacusnbody.metadata.get_meta(name) # Load simulation metadata (time-independent)
-        cosmo = w0waCDM(H0=sim_meta_data['H0'], Om0=sim_meta_data['Omega_M'], Ode0=sim_meta_data['Omega_DE'], Ob0=sim_meta_data['omega_b'],
+        Ob0 = sim_meta_data['omega_b'] / (sim_meta_data['H0'] / 100)**2 # Abacus omega_b is the physical density Omega_b h^2
+        cosmo = w0waCDM(H0=sim_meta_data['H0'], Om0=sim_meta_data['Omega_M'], Ode0=sim_meta_data['Omega_DE'], Ob0=Ob0,
                 w0=sim_meta_data['w0'], wa=sim_meta_data['wa'],Neff=sim_meta_data['N_ur']+sim_meta_data['N_ncdm'],Tcmb0=2.7255) # Create astropy cosmology object
         cosmo_objects.append(cosmo)
     return cosmo_objects
@@ -51,7 +64,7 @@ def create_cosmo(cosmo_names):
 
 def read_pairs_data(file):
     '''Read the simulation data from the hdf5 file'''
-    path = os.path.join('data', file)
+    path = os.path.join(DATA_DIR, file)
     data = {}
     with h5py.File(path, 'r') as f:
         for k in f.keys():
@@ -398,7 +411,7 @@ def all_cosmo_results(file_names, cosmo_models, cosmo_tags, labels, suffix, vrad
     index = pd.MultiIndex.from_tuples(index_tuples, names=["cosmo", "variable", "filter"])
     df_dists = pd.DataFrame({'dist': records}, index=index)
 
-    df_dists.to_pickle('results/' + suffix + '/dists.pkl')
+    df_dists.to_pickle(os.path.join(RESULTS_DIR, suffix, 'dists.pkl'))
 
     return df_results
 
@@ -424,19 +437,19 @@ def all_cosmo_analysis(df_results,suffix):
     df_cosmo_analysis_all = pd.concat([df_means_all,df_counts_all],axis=1,keys=['mean_all','num_cosmo_all'])
 
     # Save results
-    df_results.to_pickle('results/' + suffix + '/cosmo_results.pkl')
-    df_cosmo_analysis_significant.to_pickle('results/' + suffix + '/cosmo_analysis.pkl')
-    df_cosmo_analysis_all.to_pickle('results/' + suffix + '/cosmo_analysis_all.pkl')
+    df_results.to_pickle(os.path.join(RESULTS_DIR, suffix, 'cosmo_results.pkl'))
+    df_cosmo_analysis_significant.to_pickle(os.path.join(RESULTS_DIR, suffix, 'cosmo_analysis.pkl'))
+    df_cosmo_analysis_all.to_pickle(os.path.join(RESULTS_DIR, suffix, 'cosmo_analysis_all.pkl'))
 
     return None
 
 
 def main(args):
     # Create directories
-    os.makedirs('results/' + args.suffix, exist_ok=True)
+    os.makedirs(os.path.join(RESULTS_DIR, args.suffix), exist_ok=True)
 
     # Data files
-    file_names, cosmo_names, cosmo_tags = read_files('data')
+    file_names, cosmo_names, cosmo_tags = read_files(DATA_DIR)
     cosmo_models = create_cosmo(cosmo_names)
 
     # Sample names
@@ -455,7 +468,7 @@ def main(args):
 
 
 if __name__ == '__main__':
-    obs_data = read_obs_data('results/montecarlo_results.csv')
+    obs_data = read_obs_data(os.path.join(RESULTS_DIR, 'montecarlo_results.csv'))
 
     p = argparse.ArgumentParser()
     p.add_argument('--suffix', required=True)

@@ -6,6 +6,15 @@ from sklearn.model_selection import StratifiedKFold
 from sklearn.metrics import f1_score, classification_report
 import os
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv()  # reads LGKIN_DIR from .env at the repo root
+except ImportError:
+    pass
+
+# Folder holding results/; defaults to the directory the script is run from (the repo root)
+RESULTS_DIR = os.path.join(os.environ.get('LGKIN_DIR', '.'), 'results')
+
 
 def evaluate_feature_importances(X, y, feature_names, name, directory,n_splits=5, random_state=42):
     cv = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=random_state)
@@ -57,8 +66,8 @@ def evaluate_feature_importances(X, y, feature_names, name, directory,n_splits=5
 def main():
     suffix = 'final_rev'
 
-    df_results = pd.read_pickle('results/' + suffix + '/cosmo_results.pkl')
-    cosmo_params_df = pd.read_csv('analysis v2/filtered_cosmologies_latex_final.csv', index_col='cosmo')
+    df_results = pd.read_pickle(os.path.join(RESULTS_DIR, suffix, 'cosmo_results.pkl'))
+    cosmo_params_df = pd.read_csv('analysis/filtered_cosmologies_latex.csv', index_col='cosmo')
 
     X = cosmo_params_df.drop(columns=['Notes'])
 
@@ -66,13 +75,16 @@ def main():
 
     variables = ['vrel_tan', 'vrel_rad']
 
+    # Sample to classify ('Real' or 'Pract'). Each run only produces results for this filter,
+    # so change it and run again to reproduce the results for all filters.
+    # The paper figures (all_cosmo_plots.py) use 'Pract'; cosmo_analysis.ipynb uses both.
     filt = 'Real'
     significant = [df_results.xs((variable,filt), level=('variable','filter'))['significant'].values for variable in variables]
 
     y_vtan = (significant[0] == True).astype(int)
     y_vrad = (significant[1] == True).astype(int)
 
-    directory = 'results/' + suffix + '/random_forest_' + filt
+    directory = os.path.join(RESULTS_DIR, suffix, 'random_forest_' + filt)
     os.makedirs(directory, exist_ok=True)
 
     evaluate_feature_importances(X.values, y_vtan, X.columns,'vrel_tan', directory)
