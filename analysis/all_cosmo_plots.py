@@ -412,7 +412,7 @@ def plot_scatter_matrix_mdiff(importances_df, df_results, cosmo_params_df, var, 
     top_features.sort()
 
     if var == 'vrel_tan':
-        top_features = [r'$A_s$',r'$\sigma_8$', r'$\sigma_{8,cb}$', r'$h$', r'$\Omega_b$']
+        top_features = [r'$A_s$',r'$\sigma_8$', r'$\sigma_{8,cb}$', r'$h$', r'$\omega_b$']
 
     v_var = df_results.xs((var,filt), level=['variable','filter'])
 

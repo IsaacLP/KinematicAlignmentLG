@@ -1,4 +1,4 @@
-cosmo,Notes,$\Omega_b$,$\Omega_c$,$h$,$A_s$,$n_s$,$\alpha_s$,$N_{ur}$,$N_{ncdm}$,$\Omega_{ncdm}$,$w_0$,$w_a$,$\sigma_8$,"$\sigma_{8,cb}$"
+cosmo,Notes,$\omega_b$,$\omega_c$,$h$,$A_s$,$n_s$,$\alpha_s$,$N_{ur}$,$N_{ncdm}$,$\omega_{ncdm}$,$w_0$,$w_a$,$\sigma_8$,"$\sigma_{8,cb}$"
 c000,"BaselineLCDM,Planck2018base_plikHM_TTTEEE_lowl_lowE_lensingmean",0.02237,0.12,0.6736,2.083e-09,0.9649,0.0,2.0328,1,0.0006442,-1.0,0.0,0.807952,0.811355
 c001,"WMAP9+ACT+SPTLCDM,Calabrese++2017",0.02242,0.1134,0.703,2.0376e-09,0.9638,0.0,2.0328,1,0.0006442,-1.0,0.0,0.776779,0.780222
 c002,"wCDMwiththawingmodelw0=-0.7,wa=-0.5",0.02237,0.12,0.6278,2.314e-09,0.9649,0.0,2.0328,1,0.0006442,-0.7,-0.5,0.808189,0.811577
