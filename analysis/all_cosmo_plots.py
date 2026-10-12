@@ -1,12 +1,15 @@
 import os
+import time
 import argparse
+import shutil
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
 from all_cosmo import read_obs_data
 from matplotlib import gridspec
-from scipy.stats import binned_statistic, binned_statistic_2d, spearmanr
+from matplotlib.ticker import MaxNLocator
+from scipy.stats import spearmanr
 
 plt.style.use('seaborn-v0_8-deep')
 
@@ -48,9 +51,13 @@ def cumulative_distribution(dist):
     return data_sorted, cdf
 
 
-# AbacusSummit cosmology families as described in the paper (Section 2), in plotting order:
-# base = primary c000, secondary c001-c004 and neutrino variants c009, c019, c020
-COSMO_FAMILIES = ['Base', 'Reference', 'Linear derivative grid', 'Emulator grid']
+# Cosmology families in plotting order, using the AbacusSummit set names
+# (https://abacussummit.readthedocs.io/en/latest/cosmologies.html):
+# - primary c000 with its neutrino variants c009, c019, c020, plus the secondary cosmologies c001-c004
+# - reference cosmologies c010, c012-c018, c021-c022
+# - derivative grids: the linear derivative grid c100-c116 and the smaller-spacing pairs c117-c126
+# - emulator grid c130-c181
+COSMO_FAMILIES = ['Primary and secondary', 'Reference', 'Derivative grids', 'Emulator grid']
 REFERENCE_COSMOS = [10, 12, 13, 14, 15, 16, 17, 18, 21, 22]
 
 
@@ -60,10 +67,10 @@ def cosmo_family(name):
     if number >= 130:
         return 'Emulator grid'
     if number >= 100:
-        return 'Linear derivative grid'
+        return 'Derivative grids'
     if number in REFERENCE_COSMOS:
         return 'Reference'
-    return 'Base'
+    return 'Primary and secondary'
 
 
 def sort_cosmos(cosmo_names):
@@ -71,15 +78,19 @@ def sort_cosmos(cosmo_names):
     return sorted(cosmo_names, key=lambda name: (COSMO_FAMILIES.index(cosmo_family(name)), int(name[1:])))
 
 
-SHORT_FAMILY_NAMES = {'Base': 'Base', 'Reference': 'Ref.',
-                      'Linear derivative grid': 'Derivative grid', 'Emulator grid': 'Emulator grid'}
+# Labels drawn above the panels (LaTeX text, so & is escaped); the short ones are for
+# single-column figures and are defined in the figure caption
+FAMILY_NAMES = {'Primary and secondary': r'Primary \& secondary', 'Reference': 'Reference',
+                'Derivative grids': 'Derivative grids', 'Emulator grid': 'Emulator grid'}
+SHORT_FAMILY_NAMES = {'Primary and secondary': 'P+S', 'Reference': 'Ref.',
+                      'Derivative grids': 'Derivative grids', 'Emulator grid': 'Emulator grid'}
 
 
 def mark_cosmo_families(ax, cosmo_names, show_names=False, short_names=False, label_starts=True, fontsize=8):
     '''Separate cosmology families with vertical lines and tick the first model of each.
     Assumes cosmo_names is ordered with sort_cosmos and plotted at x = 0, 1, 2, ...
-    For single-column figures use short_names and label_starts=False, since the small
-    families are too narrow for full names and cosmology labels.'''
+    The first two families are too narrow for their full names, so use short_names (defined
+    in the captions); single-column figures also need label_starts=False.'''
     families = [cosmo_family(name) for name in cosmo_names]
     starts = [i for i in range(len(families)) if i == 0 or families[i] != families[i - 1]]
     ends = starts[1:] + [len(families)]
@@ -95,7 +106,7 @@ def mark_cosmo_families(ax, cosmo_names, show_names=False, short_names=False, la
 
     if show_names:
         for start, end in zip(starts, ends):
-            name = SHORT_FAMILY_NAMES[families[start]] if short_names else families[start]
+            name = (SHORT_FAMILY_NAMES if short_names else FAMILY_NAMES)[families[start]]
             ax.text((start + end - 1) / 2, 1.02, name, transform=ax.get_xaxis_transform(),
                     ha='center', va='bottom', fontsize=fontsize)
 
@@ -127,16 +138,12 @@ def plot_cdf(dists,label,obs_value,uncertainty,xlim,variable,fig_name,iteration_
 
 
 def plot_cdf_kinematics(df_dists,obs_data,labels,plot_directory, num_cosmo='c000'):
-    '''Plot CDFs for kinematic variables for a given cosmology'''
+    '''Plot the CDFs of mu and the barycenter speed for a given cosmology (Figure 2)'''
     dists_mu_raw = df_dists.xs((num_cosmo, 'mu'), level=('cosmo', 'variable')).values
     dists_vcm_raw = df_dists.xs((num_cosmo, 'speed_vcm'), level=('cosmo', 'variable')).values
-    dists_vrel_rad_raw = df_dists.xs((num_cosmo, 'vrel_rad'), level=('cosmo', 'variable')).values
-    dists_vrel_tan_raw = df_dists.xs((num_cosmo, 'vrel_tan'), level=('cosmo', 'variable')).values
 
     dists_mu = [x[0].value for x in dists_mu_raw]
     dists_vcm = [x[0].value for x in dists_vcm_raw]
-    dists_vrel_rad = [x[0] for x in dists_vrel_rad_raw]
-    dists_vrel_tan = [x[0] for x in dists_vrel_tan_raw]
 
     labels_mu = labels.copy()
     labels_vcm = labels.copy()
@@ -149,13 +156,7 @@ def plot_cdf_kinematics(df_dists,obs_data,labels,plot_directory, num_cosmo='c000
              [-1,1],r'Alignment $\mu = \cos \theta$','mu_cdf_' + num_cosmo,plot_directory)
 
     plot_cdf(dists_vcm,labels_vcm,obs_data['v_cm'][0],obs_data['v_cm'][1],
-             [0,1200],r'Barycenter speed $v_{b}$ $[\text{kms}^{-1}]$','v_cm_cdf_' + num_cosmo,plot_directory)
-
-    plot_cdf(dists_vrel_rad,labels,obs_data['v_rad'][0],obs_data['v_rad'][1], 
-             [-500,0],r'$v_{r}$ $[\text{kms}^{-1}]$','v_rel_rad_cdf_' + num_cosmo,plot_directory)
-
-    plot_cdf(dists_vrel_tan,labels,obs_data['v_tan'][0],obs_data['v_tan'][1],
-            [0,500],r'$v_{t}$ $[\text{kms}^{-1}]$','v_rel_tan_cdf_' + num_cosmo,plot_directory)
+             [0,1200],r'Barycenter speed $v_{b}$ [km\,s$^{-1}$]','v_cm_cdf_' + num_cosmo,plot_directory)
 
 
 def plot_vr_vs_mu(v_b, mu, v_r,
@@ -164,7 +165,7 @@ def plot_vr_vs_mu(v_b, mu, v_r,
                   min_count=20,
                   mu_obs = [-0.88,0.01],
                   xlabel=r'Alignment $\mu = \cos\theta$',
-                  ylabel=r'Mean $v_r$ [km/s]',
+                  ylabel=r'Mean $v_r$ [km\,s$^{-1}$]',
                   plot_directory='.',
                   filename='vr_vs_mu_profile',
                   return_data=False):
@@ -176,11 +177,11 @@ def plot_vr_vs_mu(v_b, mu, v_r,
     centers = 0.5 * (edges[:-1] + edges[1:])
 
     samples = [
-        ('All traditional pairs', np.ones_like(mu, dtype=bool), 'C0', 'o'),
-        (rf'$v_b > {vb_cut:g}$ km/s', v_b > vb_cut, 'C3', 's'),
+        ('Trad', np.ones_like(mu, dtype=bool), 'C0', 'o'),
+        (rf'$v_b > {vb_cut:g}$ km\,s$^{{-1}}$', v_b > vb_cut, 'C1', 's'),
     ]
 
-    fig, ax = plt.subplots(figsize=(COLUMN_WIDTH, 2.9), layout='constrained')
+    fig, ax = plt.subplots(figsize=(0.9 * COLUMN_WIDTH, 2.6), layout='constrained')
     results = {}
     offset = 0.25 * (edges[1] - edges[0])  # small x-shift so error bars don't overlap
 
@@ -205,14 +206,14 @@ def plot_vr_vs_mu(v_b, mu, v_r,
         results[label] = dict(centers=centers, mean=mean, sem=sem, count=count)
 
     # Reference line: mean of the full traditional sample
-    ax.axhline(v_r.mean(), color='gray', ls='--', lw=1,label='Mean of all traditional pairs')
+    ax.axhline(v_r.mean(), color='gray', ls='--', lw=1,label='Trad mean')
 
     # Observed value band
-    plt.fill_betweenx(ax.get_ylim(), mu_obs[0] - mu_obs[1], mu_obs[0] + mu_obs[1], color='skyblue', alpha=0.3, label=r'Observed $\mu$ value')
+    plt.fill_betweenx(ax.get_ylim(), mu_obs[0] - mu_obs[1], mu_obs[0] + mu_obs[1], color='skyblue', alpha=0.3, label=r'Observed $\mu$')
 
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
-    fig.legend(loc='outside upper center', ncol=2)
+    ax.legend(loc='upper center')
     plt.savefig(plot_directory + '/' + filename + '.pdf', dpi=300)
 
 
@@ -242,7 +243,13 @@ def plot_pvalues(df_results,cosmo_names,plot_directory):
     mark_cosmo_families(ax1, cosmo_names, show_names=True, short_names=True, label_starts=False)
     mark_cosmo_families(ax2, cosmo_names, label_starts=False)
 
-    fig.legend(loc='outside lower center', ncol=3)
+    # One-row legend along the bottom of the lower panel, where the bars rarely reach
+    handles, labels = [], []
+    for ax in (ax1, ax2):
+        h, l = ax.get_legend_handles_labels()
+        handles += h
+        labels += l
+    ax2.legend(handles, labels, loc='lower center', ncol=3)
     plt.savefig(plot_directory + '/pvalues.pdf')
 
 
@@ -261,8 +268,9 @@ def plot_cdf_comparison(df_velocities,cosmo_max_rad,cosmo_max_tan,obs_data,plot_
     dists_vrel_tan2 = [x[0] for x in dists_vrel_tan_raw2]
 
     # One subfigure per cosmology so each row gets its own title without overlapping the panels
-    fig = plt.figure(figsize=(0.72 * TEXT_WIDTH, 3.6), layout='constrained')
-    subfig_top, subfig_bottom = fig.subfigures(nrows=2, ncols=1)
+    # The bottom row also holds the x-axis labels, so it gets extra height to keep both rows of panels the same size
+    fig = plt.figure(figsize=(0.9 * TEXT_WIDTH, 3.6), layout='constrained')
+    subfig_top, subfig_bottom = fig.subfigures(nrows=2, ncols=1, height_ratios=[1, 1.12])
     ax1, ax2 = subfig_top.subplots(nrows=1, ncols=2, sharey=True)
     ax3, ax4 = subfig_bottom.subplots(nrows=1, ncols=2, sharey=True)
     axes = np.array([ax1, ax2, ax3, ax4])
@@ -299,190 +307,94 @@ def plot_cdf_comparison(df_velocities,cosmo_max_rad,cosmo_max_tan,obs_data,plot_
     ax3.set_xlim(-400,0)
     ax4.set_xlim(0,400)
 
-    ax3.set_xlabel(r'$v_r$ [$\text{kms}^{-1}$]')
-    ax4.set_xlabel(r'$v_t$ [$\text{kms}^{-1}$]')
+    ax3.set_xlabel(r'$v_r$ [km\,s$^{-1}$]')
+    ax4.set_xlabel(r'$v_t$ [km\,s$^{-1}$]')
 
-    fig.legend(loc='outside lower center', ncol=4)
+    # Gather legend entries into the empty corner of the lower-left panel
+    handles, labels = [], []
+    for ax in axes:
+        h, l = ax.get_legend_handles_labels()
+        handles += h
+        labels += l
+    ax3.legend(handles, labels, loc='upper left')
     for ax in axes.flatten():
         ax.grid()
 
-    subfig_top.suptitle(f'Cosmology {cosmo_max_rad[1:]}')
-    subfig_bottom.suptitle(f'Cosmology {cosmo_max_tan[1:]}')
+    subfig_top.suptitle('Cosmology ' + cosmo_max_rad)
+    subfig_bottom.suptitle('Cosmology ' + cosmo_max_tan)
 
     plt.savefig(plot_directory + '/cdf_velocities.pdf')
 
 
-def plot_num_pairs(df_results, cosmo_names,plot_directory):
-    '''Plot number of pairs for each cosmology and filter'''
-    filts = ['Trad','Real','Pract']
-    labels = ['Traditional','Realistic','Centered']
-    sizes = [df_results.xs(('vrel_rad',f),level=('variable','filter'))['Size'] for f in filts]
-
-    fmts = ['-o', '-s', '-D', '-^', '-x']
-
-    fig, ax = plt.subplots(figsize=(8,6))
-    for i, size in enumerate(sizes):
-        ax.plot(cosmo_names,size, fmts[i],label=labels[i], linewidth=1.5)
-        
-    ax.set_xlabel('Cosmology')
-    ax.set_ylabel('Number of pairs')
-    ax.set_yscale('log')
-    ax.set_xticklabels([])
-    ax.legend()
-    plt.tight_layout()
-    plt.savefig(plot_directory + '/number_of_pairs.pdf')
-
-
-def plot_means(df_results, variables, variables_labels, filters, plot_directory,filename, opt='all_cosmo',statistic='Mean'):
-    '''Plot mean velocities across cosmologies for different filters'''
-    # Order cosmologies by family so they can be grouped on the x-axis
+def plot_means_stacked(df_results, variables, variables_labels, delta_labels, filters, plot_directory, filename):
+    '''Plot mean velocities across cosmologies (Figure 4): each velocity panel is followed by a thin
+    panel with the percentage difference of the second filter relative to the first, with standard-error bars'''
     all_cosmos = sort_cosmos(df_results.index.get_level_values('cosmo').unique())
+    x_vals = np.arange(len(all_cosmos))
 
-    # Prepare figure
     fig, axs = plt.subplots(
-        nrows=len(variables),
+        nrows=2 * len(variables),
         ncols=1,
-        figsize=(0.9 * TEXT_WIDTH, 2.3 * len(variables)),
+        figsize=(0.9 * TEXT_WIDTH, 2.15 * len(variables)),
         sharex=True,
+        gridspec_kw={'height_ratios': [2.2, 1] * len(variables)},
         layout='constrained'
     )
-    if len(variables) == 1:
-        axs = [axs]
 
-    markers = ['s', 'o', '^']
-    colors = ['C0', 'C1', 'C2']
+    markers = ['s', 'o']
+    colors = ['C0', 'C1']
 
-    def plot_mean_with_std(ax, var, var_label, statistic=statistic):
-        df_results_var = df_results.xs(var, level='variable')
+    for k, (var, var_label, delta_label) in enumerate(zip(variables, variables_labels, delta_labels)):
+        ax, ax_delta = axs[2 * k], axs[2 * k + 1]
+        df_var = df_results.xs(var, level='variable')
 
-        # Option to filter by significant cosmologies
-        if opt == 'all_cosmo':
-            df_filtered = df_results_var.copy()
-        else:
-            cosmo_significant = df_results_var[df_results_var["significant"] == True] \
-                                    .index.get_level_values("cosmo").unique()
-            df_filtered = df_results_var.loc[
-                df_results_var.index.get_level_values("cosmo").isin(cosmo_significant)
-            ]
-
-        # Prepare means for each filter, aligned to all_cosmos
-        means_var = []
+        means, errors = [], []
         for f in filters:
-            df_filt = df_filtered.xs(f, level='filter')
-            df_filt = df_filt.reindex(all_cosmos, level='cosmo')
-            means_var.append(df_filt[statistic].values)
+            df_filt = df_var.xs(f, level='filter').reindex(all_cosmos)
+            means.append(df_filt['Mean'].values)
+            errors.append((df_filt['Std'] / np.sqrt(df_filt['Size'])).values)
 
-        x_vals = np.arange(len(all_cosmos))
+        # Means with their standard errors (the traditional ones are smaller than the markers)
+        for i, mean in enumerate(means):
+            ax.errorbar(x_vals, mean, yerr=errors[i], fmt=markers[i], color=colors[i], ecolor=colors[i],
+                        elinewidth=0.6, capsize=0, zorder=3, label=filters[i])
 
-        # Plot scatter and shaded band for the first filter
-        for i, mean in enumerate(means_var):
-            ax.scatter(
-                x_vals,
-                mean,
-                label=filters[i] + ' [km/s]',
-                marker=markers[i % len(markers)],
-                color=colors[i % len(colors)],
-                zorder=3
-            )
+        # Spread of the traditional means across cosmologies
+        mean_val = np.nanmean(means[0])
+        std_val = np.nanstd(means[0], ddof=1)
+        ax.fill_between(x_vals, mean_val - std_val, mean_val + std_val, color=colors[0], alpha=0.3,
+                        label=f'{filters[0]} std.\\ dev.')
+        ax.axhline(mean_val, color=colors[0], linestyle='--', label=f'{filters[0]} mean')
+        # Two lines so the label fits the short panel
+        ax.set_ylabel(rf'Mean {var_label}' + '\n' + r'[km\,s$^{-1}$]')
 
-            if i == 0:
-                mean_val = np.nanmean(mean)
-                std_val = np.nanstd(mean, ddof=1)
-                ax.fill_between(
-                    x_vals,
-                    mean_val - std_val,
-                    mean_val + std_val,
-                    color=colors[i % len(colors)],
-                    alpha=0.3,
-                    label =f'{filters[i]} Std Dev',
-                )
-                ax.axhline(y=mean_val,
-                           xmin=0, xmax=len(all_cosmos)-1, 
-                           color=colors[i % len(colors)], 
-                           linestyle='--',
-                           label=f'{filters[i]} Mean [km/s]')
+        # Percentage difference with the standard errors of both means propagated
+        base, other = means[0], means[1]
+        delta = (other - base) / base * 100
+        delta_err = 100 * np.abs(other / base) * np.sqrt((errors[1] / other)**2 + (errors[0] / base)**2)
+        ax_delta.axhline(0, color='0.3', linewidth=0.8, zorder=1)
+        ax_delta.errorbar(x_vals, delta, yerr=delta_err, fmt='x', color='C2', ecolor='C2',
+                          elinewidth=0.6, capsize=0, zorder=3, label=f'{filters[1]} vs {filters[0]}')
+        ax_delta.set_ylabel(delta_label)
 
-        # Compute percentage differences (Δ%)
-        base = means_var[0]
-        axb = ax.twinx()
-        for i, f in enumerate(means_var[1:]):
-            delta = (f - base) / base * 100
-            axb.scatter(
-                x_vals,
-                delta,
-                marker='x',
-                color=colors[2],
-                alpha=0.7,
-                label=f'$\\Delta$ {filters[i + 1]} vs {filters[0]} (\\%)'
-            )
-
-        # Labels and appearance
-        ax.set_ylabel(f'Mean {var_label} [km/s]')
-        axb.set_ylabel('Difference (\\%)')
-        ax.grid(True, zorder=0)
-        mark_cosmo_families(ax, all_cosmos, show_names=(ax is axs[0]))
-
-        return ax
-
-    # Loop over variables
-    for i, var in enumerate(variables):
-        axs[i] = plot_mean_with_std(axs[i], var, variables_labels[i])
+        for a in (ax, ax_delta):
+            a.grid(True, axis='y', zorder=0)
+            mark_cosmo_families(a, all_cosmos, show_names=(a is axs[0]), short_names=True)
 
     axs[-1].set_xlabel('Cosmology')
+    fig.align_ylabels(axs)
 
-    # ---- Deduplicated legend (includes twin axes) ----
     handles, labels = [], []
-    for ax in fig.axes:
-        h, l = ax.get_legend_handles_labels()
+    for a in axs[:2]:
+        h, l = a.get_legend_handles_labels()
         handles += h
         labels += l
-    unique = dict(zip(labels, handles))
-    fig.legend(
-        unique.values(),
-        unique.keys(),
-        loc='outside lower center',
-        ncol=5
-    )
+    # Samples first, then the reference band and line, then the difference
+    order = [filters[0], filters[1], f'{filters[0]} std.\\ dev.', f'{filters[0]} mean', f'{filters[1]} vs {filters[0]}']
+    by_label = dict(zip(labels, handles))
+    fig.legend([by_label[l] for l in order], order, loc='outside upper center', ncol=5, frameon=False)
 
-    plt.savefig(os.path.join(plot_directory, filename + f'_{opt}.pdf'))
-    plt.close()
-
-
-def plot_scatter_matrix_cosmo(df_results, cosmo_params_df, df_importance, var, filt, plot_directory, filename, num_features=5):
-    '''Plot scatter matrix of top cosmological parameters'''
-    top_features = df_importance['Feature'].head(num_features).tolist()
-    top_features.sort()
-        
-    v_var = df_results.xs((var,filt), level=['variable','filter'])
-
-    df_joined = v_var.join(cosmo_params_df)
-
-    fig, ax = plt.subplots(figsize=(8, 8))
-
-    grid = sns.pairplot(
-        data=df_joined,
-        vars=top_features,
-        hue='significant',
-        markers=['X', 'o'],
-        palette={0: 'black', 1: 'gray'},
-        diag_kind='kde',
-        corner=True,  
-        plot_kws={'alpha': 0.8, 's': 40, 'edgecolor': 'w'}
-    )
-    
-    #grid.figure.suptitle(title, y=1.02)
-
-    # Move Seaborn’s automatically created legend outside
-    legend = grid._legend
-    legend.set_bbox_to_anchor((0.88, 0.95))
-    legend.set_frame_on(True)
-    legend.set_title("")
-    legend.get_texts()[0].set_text("Not significant")
-    legend.get_texts()[1].set_text("Significant")
-
-    os.makedirs(plot_directory, exist_ok=True)
-    file_path = os.path.join(plot_directory, f'{filename}.pdf')
-    grid.figure.savefig(file_path, dpi=300, bbox_inches='tight')
+    plt.savefig(os.path.join(plot_directory, filename + '.pdf'))
     plt.close()
 
 
@@ -511,9 +423,11 @@ def plot_scatter_matrix_mdiff(importances_df, df_results, cosmo_params_df, var, 
     ax2 = fig.add_subplot(gs[0, 2:4])
     ax3 = fig.add_subplot(gs[0, 4:6])
 
-    # Bottom row: two plots centered (they occupy the middle 4 columns as two 2-column blocks)
-    ax4 = fig.add_subplot(gs[1, 1:3])
-    ax5 = fig.add_subplot(gs[1, 3:5])
+    # Bottom row: two plots on the left, the legend in the free slot on the right
+    ax4 = fig.add_subplot(gs[1, 0:2])
+    ax5 = fig.add_subplot(gs[1, 2:4])
+    ax_legend = fig.add_subplot(gs[1, 4:6])
+    ax_legend.axis('off')
 
     axes = [ax1, ax2, ax3, ax4, ax5]
 
@@ -524,7 +438,7 @@ def plot_scatter_matrix_mdiff(importances_df, df_results, cosmo_params_df, var, 
             y="M diff",
             hue="significant",
             style="significant",
-            palette={0: 'black', 1: 'gray'},
+            palette={0: 'C0', 1: 'C2'},
             ax=ax,
             s=8,
         )
@@ -533,20 +447,28 @@ def plot_scatter_matrix_mdiff(importances_df, df_results, cosmo_params_df, var, 
         ax.set_xlabel(param)
 
         corr, _ = spearmanr(df_joined[param], df_joined["M diff"])
-        ax.set_title(rf'$\rho={corr:.2f}$', fontsize=8, pad=2)
+        # Headroom at the top so the rho label doesn't cover points
+        y_low, y_high = ax.get_ylim()
+        ax.set_ylim(y_low, y_high + 0.3 * (y_high - y_low))
+        # Narrow panels: few ticks at round steps so the tick labels stay apart
+        ax.xaxis.set_major_locator(MaxNLocator(nbins=3, steps=[1, 2, 5, 10]))
+        ax.text(0.05, 0.95, rf'$\rho={corr:.2f}$', fontsize=8,
+                verticalalignment='top', transform=ax.transAxes,
+                bbox={'boxstyle': 'round,pad=0.2', 'facecolor': 'white', 'alpha': 0.7, 'edgecolor': '0.5', 'linewidth': 0.5})
 
-    fig.supylabel("Mean difference in " + r"$v_r$" + " ($\\%$)" if var == "vrel_rad" else "Mean difference in " + r"$v_t$" + " ($\\%$)")
+    fig.supylabel("Mean difference in " + r"$|v_r|$" + " ($\\%$)" if var == "vrel_rad" else "Mean difference in " + r"$v_t$" + " ($\\%$)")
     handles, _ = axes[0].get_legend_handles_labels()
-    fig.legend(handles, ['Not significant', 'Significant'], loc='outside upper center', ncol=2)
+    ax_legend.legend(handles, ['Not significant', 'Significant'], loc='center')
 
     plt.savefig(plot_directory + '/' + filename + '.pdf')
 
 
 def plot_feature_importance(df,plot_directory,filename):
     '''Plot feature importance as a bar plot'''
-    _, ax = plt.subplots(figsize=(0.42 * TEXT_WIDTH, 2.2))
+    _, ax = plt.subplots(figsize=(0.49 * TEXT_WIDTH, 2.4))
     #ax.set_title(title)
     sns.barplot(x='Mean Importance', y='Feature', data=df, hue='Mean Importance', palette='viridis', legend=False, ax=ax)
+    ax.xaxis.set_major_locator(MaxNLocator(nbins=4))  # fewer ticks so the labels don't touch
     plt.tight_layout()
     plt.savefig(plot_directory + '/feature_importance_' + filename + '.pdf', dpi=300)
 
@@ -558,6 +480,7 @@ def plot_all_results(suffix='final_rev'):
     # Create a directory to save the plots
     plot_directory = 'figures/' + suffix
     os.makedirs(plot_directory, exist_ok=True)
+    start_time = time.time()  # only figures written by this run are copied to the paper
 
     # Font sizes and line widths matching the paper
     plt.rcParams.update(PAPER_STYLE)
@@ -602,12 +525,8 @@ def plot_all_results(suffix='final_rev'):
     plot_cdf_comparison(df_dists,'c004','c130',obs_data,plot_directory)
 
 
-    plot_num_pairs(df_results,cosmo_names,plot_directory)
+    plot_means_stacked(df_results,['vrel_rad','vrel_tan'],['$v_r$','$v_t$'],['Diff. (\\%)','Diff. (\\%)'],['Trad','Real'],plot_directory,'mean_velocities_real_stacked')
 
-    plot_means(df_results,['vrel_rad','vrel_tan'],['$v_r$','$v_t$'],['Trad','Real'],plot_directory,'mean_velocities_real',opt='all_cosmo')
-    plot_means(df_results,['vrel_rad','vrel_tan'],['$v_r$','$v_t$'],['Trad','Pract'],plot_directory,'mean_velocities_pract',opt='all_cosmo')
-
-    
     # Feature importance
     filt1 = 'Pract'
     df_importance_vrel_rad_pract = pd.read_csv( results_dir + '/results/' + suffix + '/random_forest_' + filt1 + '/feature_importance_vrel_rad.csv')
@@ -624,9 +543,20 @@ def plot_all_results(suffix='final_rev'):
     plot_scatter_matrix_mdiff(df_importance_vrel_tan_pract,df_results,df_cosmo_params,
                               'vrel_tan','Pract',plot_directory,'scatter_matrix_mdiff_vrel_tan_pract')
 
+    # Copy the generated plots to the specified directory if provided
+    if args.copy_dir:
+        os.makedirs(args.copy_dir, exist_ok=True)
+        for file_name in os.listdir(plot_directory):
+            full_file_name = os.path.join(plot_directory, file_name)
+            # Skip stale figures from earlier runs that the paper no longer uses
+            if os.path.isfile(full_file_name) and os.path.getmtime(full_file_name) >= start_time:
+                shutil.copy(full_file_name, args.copy_dir)
+        print(f"Copied generated plots to {args.copy_dir}")
+
     
 if __name__ == "__main__":
     argument_parser = argparse.ArgumentParser(description="Generate the plots with all results and save to specified directory.")
     argument_parser.add_argument("--suffix", type=str, default="final_rev", help="Suffix for results directory.")
+    argument_parser.add_argument('--copy_dir', type=str, default='paper/source/figures/', help='Directory to copy the generated plots to.')
     args = argument_parser.parse_args()
     plot_all_results(suffix=args.suffix)
