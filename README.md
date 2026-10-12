@@ -33,8 +33,115 @@ This work introduces the barycenter velocity vector as an additional constraint:
 6. Analyse global trends in the full cosmology set.
 7. Examine links with cosmological parameters.
 
+## Pipeline overview
+
+The analysis runs in five steps. Each step writes files that the next one reads:
+
+```
+AbacusSummit CompaSO halo catalogues (NERSC)
+        │  1. src/find_pairs_abacus.py
+        ▼
+data/pairs_AbacusSummit_base_cXXX_ph000_z0.100.hdf5        (one file per cosmology)
+        │
+        │      2. analysis/obvs_data_montecarlo.py ──► results/montecarlo_results.csv
+        │                                                    │
+        │  3. analysis/all_cosmo.py --suffix <run>  ◄────────┘
+        ▼
+results/<run>/dists.pkl, cosmo_results.pkl, cosmo_analysis.pkl, cosmo_analysis_all.pkl
+        │  4. analysis/random_forest.py
+        ▼
+results/<run>/random_forest_<sample>/*.csv
+        │  5. analysis/all_cosmo_plots.py --suffix <run>
+        ▼
+figures/<run>/*.pdf   (also copied to paper/source/figures/)
+```
+
+The paper's figures come from the run `final_rev`.
+
+### 1. Find halo pairs: `src/find_pairs_abacus.py`
+Runs on NERSC. It needs `abacusutils` and read access to `/global/cfs/cdirs/desi/cosmosim/Abacus`. For each cosmology, it reads the CompaSO halo catalogue at $z = 0.1$ (phase `ph000`) and then:
+1. keeps halos with $v_{\rm circ,max} > 200$ km/s;
+2. finds mutual nearest-neighbour pairs with a periodic KD-tree;
+3. requires isolation: no halo with a larger $v_{\rm circ,max}$ within 3× the pair separation of either member;
+4. requires both members to have $v_{\rm circ,max} < 300$ km/s.
+
+For each pair member (A and B), it stores the position, velocity, particle count (`mass_*`), $v_{\rm circ,max}$ and halo ID in an HDF5 file. Run it from `src/`, because it writes to `../data/`. The cosmology IDs it processes are listed in `abacus_simulations` at the bottom of the script.
+
+`src/test_read_abacus.py` is a quick check that a catalogue loads on NERSC.
+
+### 2. Observational constraints: `analysis/obvs_data_montecarlo.py`
+Propagates observational uncertainties with 10,000 Monte Carlo samples. The inputs are:
+- the LG barycenter velocity from the CMB dipole: $620 \pm 15$ km/s towards $(l, b) = (271.9^\circ, 29.6^\circ)$;
+- the sky positions and distances of the MW centre and M31.
+
+From these it computes the MW→M31 separation vector and $\mu$. It also stores literature values for $v_r$, $v_t$ and $M_{\rm LG}$. The output is `results/montecarlo_results.csv`, with the mean in row 0 and the standard deviation in row 1 of each column. No random seed is set, so the values change slightly from run to run.
+
+### 3. Select analogue samples and compare them: `analysis/all_cosmo.py`
+```bash
+python analysis/all_cosmo.py --suffix final_rev
+```
+For every HDF5 file in `data/`, the script:
+1. builds the cosmology from `abacusnbody.metadata` and converts particle counts to $M_\odot$;
+2. orders each pair so that A has the larger $v_{\rm circ,max}$;
+3. keeps pairs where both halos are in $0.5$–$5 \times 10^{12} M_\odot$;
+4. computes the barycenter speed $v_b$, the alignment $\mu$, $v_r$ (including Hubble flow), $v_t$ and $M_{\rm LG}$. Before $\mu$ is computed, positions are shifted from $z = 0.1$ to today using each halo's velocity and the lookback time.
+
+Each analogue is then assigned to three samples:
+
+| Sample | Code label | Plot label | Criteria |
+|---|---|---|---|
+| Traditional | `Trad` | Traditional | $r < 1\,h^{-1}$ Mpc and $v_r < 0$ |
+| Realistic | `Real` | Realistic | Traditional + $v_b > v_{b,\rm obs} - \sigma$ + $\mu < \mu_{\rm obs} + \sigma$ |
+| Centered | `Pract` | Centered | Traditional + $500 < v_b < 740$ km/s + $-0.96 < \mu < -0.80$ |
+
+For $M_{\rm LG}$, $v_r$ and $v_t$, it compares each sample with Traditional. It records summary statistics, the percentage change in the mean, and a two-sample KS test. A difference is significant when $p < 0.05$.
+
+| Option | Default | Meaning |
+|---|---|---|
+| `--suffix` | required | Name of the run; outputs go to `results/<suffix>/` |
+| `--vrad_max` | `0` | Upper limit on $v_r$ (km/s) |
+| `--vcm_min` | from step 2 (≈ 605 km/s) | Lower limit on $v_b$ for the Realistic sample |
+| `--mu_max` | from step 2 (≈ −0.87) | Upper limit on $\mu$ for the Realistic sample |
+| `--HubbleFlow_flag` | not passed (correction on) | Passing it **disables** the Hubble-flow term in $v_r$ |
+| `--shift_pos_flag` | not passed (shift on) | Passing it **disables** the shift of positions to $z = 0$ |
+
+Outputs in `results/<suffix>/`:
+- `dists.pkl`: the full distribution of each variable, per cosmology and sample;
+- `cosmo_results.pkl`: the statistics table, indexed by (`cosmo`, `variable`, `filter`);
+- `cosmo_analysis.pkl`: averages over the cosmologies with a significant difference;
+- `cosmo_analysis_all.pkl`: averages over all cosmologies.
+
+### 4. Link significance to cosmology: `analysis/random_forest.py`
+For each cosmology, the label is whether the chosen sample differs significantly from Traditional in $v_r$ or $v_t$. The features are the cosmological parameters. The script trains a random-forest classifier with stratified 5-fold cross-validation and random oversampling. It writes feature importances, F1 scores and classification reports to `results/<suffix>/random_forest_<sample>/`. The run suffix and the sample (`filt`) are set in `main()`. Each run produces results for one sample only. To reproduce all results, run it once with `filt = 'Real'` and once with `filt = 'Pract'`. The plotting step uses the `Pract` (Centered) results.
+
+### 5. Figures: `analysis/all_cosmo_plots.py`
+```bash
+python analysis/all_cosmo_plots.py --suffix final_rev
+```
+Reads the outputs of steps 2–4 and `analysis/filtered_cosmologies_latex.csv`, then writes the paper figures to `figures/<suffix>/`. Figures created by this run are also copied to `--copy_dir`, which defaults to `paper/source/figures/`.
+
+## Repository layout
+
+| Path | Contents |
+|---|---|
+| `src/find_pairs_abacus.py` | Step 1: pair finding on the AbacusSummit catalogues |
+| `src/read_hdf5_pairs_abacus.ipynb` | Quick look at a pairs file and the average number of pairs per cosmology |
+| `analysis/obvs_data_montecarlo.py` | Step 2: observational constraints |
+| `analysis/all_cosmo.py` | Step 3: sample selection and statistics |
+| `analysis/random_forest.py` | Step 4: random-forest feature importance |
+| `analysis/all_cosmo_plots.py` | Step 5: paper figures |
+| `analysis/abacus_cosmo.ipynb` | Builds the cosmology parameter tables from the AbacusSummit cosmology list |
+| `analysis/base_cosmo.ipynb` | Baseline cosmology: the $\mu$ distribution, the effect of the position shift and Hubble flow, uniformity and bootstrap tests |
+| `analysis/cosmo_analysis.ipynb` | Exploration of the results across cosmologies and of the random-forest reports |
+| `analysis/cosmologies.csv` | AbacusSummit cosmology parameters |
+| `analysis/filtered_cosmologies.csv` | The 93 cosmologies used in this work |
+| `analysis/filtered_cosmologies_latex.csv` | The same cosmologies, with LaTeX column names for plotting |
+
+## Requirements
+Python 3 with `numpy`, `scipy`, `pandas`, `astropy`, `h5py`, `abacusutils`, `scikit-learn`, `imbalanced-learn`, `matplotlib`, `seaborn` and `tqdm`. `python-dotenv` is optional (see below).
+
 ## Data location
-The simulation data (`data/`) and analysis outputs (`results/`) are not tracked in this repository. Scripts are meant to be run from the repository root. By default they look for `data/` and `results/` there. To keep them elsewhere, for example on an external drive, copy `.env.example` to `.env` and point `LGKIN_DIR` at the folder that contains them:
+The simulation data (`data/`) and analysis outputs (`results/`) are not tracked in this repository. Run the scripts from the repository root. By default, steps 2–5 and the notebooks look for `data/` and `results/` there. To keep them elsewhere, for example on an external drive, copy `.env.example` to `.env` and set `LGKIN_DIR` to the folder that contains them:
 
 ```bash
 pip install python-dotenv
