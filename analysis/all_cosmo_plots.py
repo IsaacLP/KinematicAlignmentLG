@@ -187,7 +187,7 @@ def plot_vr_vs_mu(v_b, mu, v_r,
         (rf'$v_b > {vb_cut:g}$ km\,s$^{{-1}}$', v_b > vb_cut, 'C1', 's'),
     ]
 
-    fig, ax = plt.subplots(figsize=(0.9 * COLUMN_WIDTH, 2.6), layout='constrained')
+    fig, ax = plt.subplots(figsize=(COLUMN_WIDTH, 2.6), layout='constrained')
     results = {}
     offset = 0.25 * (edges[1] - edges[0])  # small x-shift so error bars don't overlap
 
