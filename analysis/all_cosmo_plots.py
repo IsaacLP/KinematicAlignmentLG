@@ -531,7 +531,7 @@ def plot_all_results(suffix='final_rev'):
     plot_cdf_comparison(df_dists,'c004','c130',obs_data,plot_directory)
 
 
-    plot_means_stacked(df_results,['vrel_rad','vrel_tan'],['$v_r$','$v_t$'],['Diff. (\\%)','Diff. (\\%)'],['Trad','Real'],plot_directory,'mean_velocities_real_stacked')
+    plot_means_stacked(df_results,['vrel_rad','vrel_tan'],['$v_r$','$v_t$'],['$\\Delta|v_r|$ (\\%)','$\\Delta v_t$ (\\%)'],['Trad','Real'],plot_directory,'mean_velocities_real_stacked')
 
     # Feature importance
     filt1 = 'Pract'
